@@ -15,6 +15,7 @@ numpy
 scipy
 pandas
 scikit-learn
+matplotlib
 
 # Graph libraries
 networkx
