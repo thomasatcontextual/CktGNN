@@ -1,8 +1,12 @@
 import sys
 import platform
 import subprocess
+import warnings
 from importlib.util import find_spec
 from pathlib import Path
+
+# Suppress torchvision image extension warning
+warnings.filterwarnings('ignore', message='Failed to load image Python extension')
 
 # ANSI color codes
 GREEN = '\033[92m'
@@ -63,6 +67,9 @@ def check_package(package_name):
     """Check if a package is available and get its version."""
     try:
         if find_spec(package_name) is None:
+            # Special case for torch_spline_conv
+            if package_name == 'torch_spline_conv':
+                return f"{package_name}: {colorize('INFO', YELLOW)} (optional dependency)"
             return f"{package_name}: {colorize('Not installed', RED)}"
         
         module = __import__(package_name)

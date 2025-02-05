@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libgomp1 \
+    python3-opencv \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create cache directories for wheels and build
@@ -24,7 +27,7 @@ COPY requirements.txt env_validation.py ./
 
 # Install Python packages in the correct order (as we discovered works)
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip_cache \
-    --mount=type=cache,target=/root/.cache/pip/wheels,id=pip_wheels \
+    --mount=type=cache,target=/root/.cache/pip/wheels,sharing=locked,id=pip_wheels \
     TORCH_CPU=1 pip install --no-cache-dir torch==1.13.1 torchvision==0.14.1 --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir torch-geometric==2.3.1 \
     && pip install --no-cache-dir torch-scatter==2.1.1 torch-sparse==0.6.17 torch-cluster==1.6.1 \
