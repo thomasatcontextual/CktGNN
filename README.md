@@ -1,6 +1,117 @@
 # CktGNN
 CktGNN is a two-level GNN model with a pre-designed subgraph basis for the analog circuit (DAG) encoding. CktGNN simultaneously optimizes circuit topology and device features, achieving state-of-art performance in analog circuit optimization. <br/>For more information, please check our ICLR 2023 paper: 'CktGNN: Circuit Graph Neural Network for Electronic Design Automation' (https://openreview.net/forum?id=NE2911Kq1sp).
 
+## Environment Setup
+
+### Prerequisites
+- Python 3.7+ (Python 3.9 recommended, especially for Apple Silicon/ARM64 machines)
+- pip (Python package installer)
+
+> **Important Note for Apple Silicon (M1/M2) Users**: 
+> If you're using an Apple Silicon (ARM64) Mac, we strongly recommend using the Conda installation method below
+> for better compatibility with scientific packages and PyTorch Geometric.
+
+### Option 1: Standard Installation (pip)
+
+> **Note**: This method may not work on Apple Silicon Macs or if you need specific
+> version compatibility. In those cases, use Option 2 (Conda Installation) instead.
+
+1. Create a virtual environment:
+```bash
+# For most systems:
+python3.9 -m venv venv
+
+# If you don't have Python 3.9 installed on macOS:
+brew install python@3.9
+```
+
+2. Activate the virtual environment:
+
+On macOS/Linux:
+```bash
+source venv/bin/activate
+```
+
+On Windows:
+```bash
+.\venv\Scripts\activate
+```
+
+3. Install the required packages:
+```bash
+# Note: This may not work on all platforms. If you encounter issues,
+# use Option 2 (Conda Installation) below instead.
+
+# Install packages in the correct order
+pip install torch==1.13.1 torchvision==0.14.1 --index-url https://download.pytorch.org/whl/cpu
+pip install torch-geometric==2.3.1
+pip install torch-scatter==2.1.1 torch-sparse==0.6.17 torch-cluster==1.6.1
+pip install -r requirements.txt
+```
+
+### Option 2: Conda Installation (Recommended for Apple Silicon/ARM64)
+
+1. Install Miniconda if not already installed:
+```bash
+# On macOS
+brew install --cask miniconda
+
+# Initialize conda (choose based on your shell)
+conda init zsh  # for zsh (default on newer Macs)
+# OR
+conda init bash # for bash
+```
+
+2. Close and reopen your terminal, then create and activate a new conda environment:
+```bash
+conda create -n cktgnn python=3.9
+conda activate cktgnn
+```
+
+3. Install PyTorch and PyTorch Geometric:
+```bash
+# Add conda-forge channel (order matters)
+conda config --add channels conda-forge
+
+# Install PyTorch 1.13.1 (stable version for Apple Silicon)
+pip install --pre torch torchvision --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+
+# Install PyTorch Geometric and extensions via pip
+pip install torch-geometric==2.3.1
+# Install PyG extensions (order matters)
+pip install torch-scatter==2.1.1
+pip install torch-sparse==0.6.17
+pip install torch-cluster==1.6.1
+
+# Install other dependencies
+conda install -c conda-forge networkx python-igraph gensim tqdm pillow pandas scikit-learn
+```
+
+### Platform-Specific Notes
+
+#### Apple Silicon (M1/M2) Macs
+- Use Option 2 (Conda Installation) above - it's specifically tested for Apple Silicon
+- The versions specified are known to work together on ARM64
+- If you see a warning about torch_spline_conv, it's safe to ignore - this is an optional dependency
+- Make sure to install packages in the order shown above
+
+#### CUDA Support
+This installation is CPU-only. For CUDA support on other platforms, please visit https://pytorch.org/get-started/locally/
+
+### Verifying the Installation
+
+You can verify your installation by running:
+```bash
+python env_validation.py
+```
+
+This will:
+- Check all required packages and their versions
+- Verify PyTorch Geometric and its extensions are working
+- Test basic GNN operations
+- Show detailed environment information
+
+* The experiment codes are basically constructed upon [D-VAE](https://github.com/muhanzhang/D-VAE/).
 
 ## OCB: Open Circuit Benchmark
 
@@ -14,12 +125,6 @@ CktGNN is a two-level GNN model with a pre-designed subgraph basis for the analo
 
 * Tutorial (directory: `/OCB`): The tutorial [/OCB/Tutorial.pdf](/OCB/Tutorial.pdf) provides guidance of understanding the source code and implementing the performance simulation on circuit simulators.  
 
-
-## Environment
-* Tested with Python 3.7, PyTorch 1.8.0, and PyTorch Geometric 1.7.2
-* Other required packages are listed in [requirements.txt](requirements.txt)
-* The experiment codes are basically constructed upon [D-VAE](https://github.com/muhanzhang/D-VAE/).
-
 ## Experiments on Ckt-Bench-101
 
 * Run variatioal auto-encoders on Ckt-Bench-101 to train different circuit/DAG encoders (CktGNN, PACE, DVAE, DAGNN...), and test the decoding ability of the decoder in the VAE (proportion of valid DAGs, valid circuits, novel DAGs generated from the latent encoding space of the circuit encoder, proportion of accurately reconstructed DAGs.) 
@@ -30,35 +135,4 @@ User can select different models (e.g. DVAE, DAGNN ..) and uses the correspondin
 
 * Run SGP regression to test whether the circuit encoder can generate a smooth latent space w.r.t. circuit properties. There are many circuit properties: FoM, Gain, Bw, Pm, while FoM is the most critical one. In circuit optimization, FoM characterizes the circuit quality and the objective is to maximize circuit's FoM.
 
-`python sgp_regression.py --checkpoint 300 --save-appendix _cktgnn --model CktGNN --hs 301`
-
-Make sure that `--save-appendix --model --hs` are consistent with previous experiment, and set `--checkpoint` equals to the `--epoch`.
-
-## Experiments on Ckt-Bench-301
-
-* Two bayesian optimization methods are provided in directory `/search_methods`: DNGO and Bohamiann. These codes are based on [pybnn](https://github.com/automl/pybnn/tree/master)
-
-* Implement Bayesian optimization on Ckt-Bench-301 to find the optimal circuits with the higest FoM. 
-
-First, run `python inference.py --checkpoint 300 --save-appendix _cktgnn --model CktGNN --hs 301` to generate the embeddings in the latent space (by the selected circuit encoder).
-
-Second, run `python bo_search.py  --save-appendix _cktgnn --model CktGNN  --search-method bo` to search the optimal circuit in Ckt-Bench-301. Expctation improvement searching is used, and users can use `--search-method` to choose the Byesian optimization model (bo = Bohamiann, dngo = DNGO).
-
-Please leave an issue if you have any trouble running the code or suggestions for improvements.
-
-## Reference
-
-If you find OCB and the source code are useful, please cite our paper.
-
-    @article{dong2023cktgnn,
-    title={CktGNN: Circuit Graph Neural Network for Electronic Design Automation},
-    author={Dong, Zehao and Cao, Weidong and Zhang, Muhan and Tao, Dacheng and Chen, Yixin and Zhang, Xuan},
-    journal={arXiv preprint arXiv:2308.16406},
-    year={2023}
-    }
-
-Zehao Dong, Washington University in St. Louis
-
-zehao.dong@wustl.edu
-
-Aug 31 2023
+`

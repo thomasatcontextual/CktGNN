@@ -1,15 +1,26 @@
-pytorch
-torch-scatter
-torch-sparse
-torch-cluster
-torch-spline-conv
-torch-geometric
-gensim
-tqdm
-pandas
+# NOTE: For Apple Silicon (M1/M2) users or if you encounter installation issues,
+# please follow the step-by-step installation guide in README.md instead of using
+# pip install -r requirements.txt
+
+# Core ML dependencies
+torch==1.13.1
+torchvision==0.14.1
+torch-geometric==2.3.1
+torch-scatter==2.1.1
+torch-sparse==0.6.17
+torch-cluster==1.6.1
+
+# Scientific computing
 numpy
 scipy
+pandas
+scikit-learn
+
+# Graph libraries
 networkx
-scikit_learn
-torchvision
 python-igraph
+
+# Other dependencies
+gensim
+tqdm
+pillow
