@@ -6,12 +6,36 @@ CktGNN is a two-level GNN model with a pre-designed subgraph basis for the analo
 ### Prerequisites
 - Python 3.7+ (Python 3.9 recommended, especially for Apple Silicon/ARM64 machines)
 - pip (Python package installer)
+- Docker (optional, for containerized setup)
 
 > **Important Note for Apple Silicon (M1/M2) Users**: 
 > If you're using an Apple Silicon (ARM64) Mac, we strongly recommend using the Conda installation method below
 > for better compatibility with scientific packages and PyTorch Geometric.
 
-### Option 1: Standard Installation (pip)
+### Option 1: Docker Installation (Recommended for reproducibility)
+
+1. Install Docker for your platform from [docker.com](https://www.docker.com/products/docker-desktop)
+
+2. Build and run with docker-compose:
+```bash
+# Build the image
+docker-compose build
+
+# Verify the environment
+docker-compose run --rm cktgnn python env_validation.py
+
+# Run training
+docker-compose run --rm cktgnn python main.py --epochs 300 --save-appendix _cktgnn --model CktGNN --hs 301
+```
+
+The Docker setup:
+- Uses Python 3.9 with all dependencies pre-configured
+- Mounts local OCB and results directories
+- Caches pip packages for faster rebuilds
+- Includes environment validation to ensure everything is working
+- Handles platform-specific dependencies automatically
+
+### Option 2: Standard Installation (pip)
 
 > **Note**: This method may not work on Apple Silicon Macs or if you need specific
 > version compatibility. In those cases, use Option 2 (Conda Installation) instead.
@@ -84,7 +108,7 @@ pip install torch-sparse==0.6.17
 pip install torch-cluster==1.6.1
 
 # Install other dependencies
-conda install -c conda-forge networkx python-igraph gensim tqdm pillow pandas scikit-learn
+conda install -c conda-forge networkx python-igraph gensim tqdm pillow pandas scikit-learn matplotlib
 ```
 
 ### Platform-Specific Notes

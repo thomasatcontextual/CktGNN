@@ -1,1 +1,39 @@
- 
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Conda environments
+conda-env/
+**/conda-env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Docker
+# Keep docker-compose.yml but ignore overrides
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
