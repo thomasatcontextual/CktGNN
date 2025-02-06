@@ -20,6 +20,8 @@ from scipy.stats import pearsonr
 import time
 from shutil import copy
 from copy import deepcopy
+import random
+import warnings
 sys.path.append('%s/../software/enas' % os.path.dirname(os.path.realpath(__file__))) 
 sys.path.append('%s/..' % os.path.dirname(os.path.realpath(__file__))) 
 sys.path.insert(0, '../')
@@ -27,6 +29,9 @@ from utils import *
 from layers.models_ig import CktGNN, DVAE
 from layers.dagnn_pyg import DAGNN
 from layers.constants import *
+
+# Suppress torchvision image extension warning
+warnings.filterwarnings('ignore', message='Failed to load image Python extension')
 
 '''Experiment settings'''
 parser = argparse.ArgumentParser(description='SGP regression on Ckt-Bench-101.')

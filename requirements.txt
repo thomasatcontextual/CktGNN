@@ -25,3 +25,4 @@ python-igraph
 gensim
 tqdm
 pillow
+colorama==0.4.6

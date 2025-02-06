@@ -3,10 +3,15 @@ venv/
 .venv/
 env/
 .env/
+venv_new/
 
 # Conda environments
 conda-env/
 **/conda-env/
+
+# Results directory
+results/
+**/results/
 
 # Python cache files
 __pycache__/

@@ -6,8 +6,14 @@ import pickle
 import pdb
 import argparse
 import random
+import warnings
 from tqdm import tqdm
 from shutil import copy
+from colorama import init
+
+# Suppress torchvision image extension warning
+warnings.filterwarnings('ignore', message='Failed to load image Python extension')
+
 import numpy as np
 import scipy.io
 from scipy.linalg import qr 
@@ -25,6 +31,17 @@ from layers.models_ig import CktGNN, DVAE
 from layers.dagnn_pyg import DAGNN
 from layers.constants import *
 import time
+
+# Initialize colorama for cross-platform color support
+init()
+
+# ANSI color codes
+GREEN = '\033[92m'
+BLUE = '\033[94m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+BOLD = '\033[1m'
+RESET = '\033[0m'
 
 parser = argparse.ArgumentParser(description='VAE experiments on Ckt-Bench-101')
 # general settings
@@ -98,7 +115,26 @@ else:
     device = torch.device("cpu")
 np.random.seed(args.seed)
 random.seed(args.seed)
-print(args)
+# Print colorized parameters
+print(f"\n{BOLD}=== Training Parameters ==={RESET}")
+# Add a more intuitive CUDA status
+cuda_status = "GPU" if args.cuda else "CPU"
+print(f"{BOLD}Device{RESET}: {YELLOW}{cuda_status}{RESET} (CUDA ID: {args.cuda_id})")
+print(f"{BOLD}{'='*30}{RESET}")
+for arg, value in vars(args).items():
+    if arg.startswith('data'):
+        color = BLUE
+    elif arg in ['epochs', 'batch_size', 'lr']:
+        color = GREEN
+    elif arg in ['cuda_id']:  # Only show cuda_id, we show device status above
+        color = YELLOW
+    elif arg in ['model', 'save_appendix']:
+        color = RED
+    else:
+        color = RESET
+    if arg not in ['cuda', 'no_cuda']:  # Skip these confusing flags
+        print(f"{BOLD}{arg}{RESET}: {color}{value}{RESET}")
+print(f"{BOLD}======================{RESET}\n")
 
 args.file_dir = os.path.dirname(os.path.realpath('__file__'))
 args.res_dir = os.path.join(args.file_dir, 'results/{}{}'.format(args.data_name,args.save_appendix))
@@ -258,10 +294,15 @@ def train(epoch):
             else:
                 mu, logvar = model.encode(g_batch)
                 loss, recon, kld, type_l, pos_l, df_l= model.loss(mu, logvar, g_batch)
-                pbar.set_description('Epoch: %d, loss: %0.4f, recon: %0.4f, kld: %0.4f, type loss: %0.4f, pos loss: %0.4f,all df_loss: %0.4f' % (
-                                epoch, loss.item()/len(g_batch), recon.item()/len(g_batch), 
-                                kld.item()/len(g_batch), -type_l.item()/len(g_batch), -pos_l.item()/len(g_batch), 
-                                df_l.item()/len(g_batch)))
+                pbar.set_description(
+                    f"{BOLD}Epoch: {epoch}{RESET}, "
+                    f"loss: {BLUE}{loss.item()/len(g_batch):.4f}{RESET}, "
+                    f"recon: {GREEN}{recon.item()/len(g_batch):.4f}{RESET}, "
+                    f"kld: {YELLOW}{kld.item()/len(g_batch):.4f}{RESET}, "
+                    f"type loss: {RED}{-type_l.item()/len(g_batch):.4f}{RESET}, "
+                    f"pos loss: {BLUE}{-pos_l.item()/len(g_batch):.4f}{RESET}, "
+                    f"df_loss: {GREEN}{df_l.item()/len(g_batch):.4f}{RESET}"
+                )
             loss.backward()
             
             train_loss += float(loss)
