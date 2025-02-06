@@ -10,6 +10,7 @@ import warnings
 from tqdm import tqdm
 from shutil import copy
 from colorama import init
+import signal
 
 # Suppress torchvision image extension warning
 warnings.filterwarnings('ignore', message='Failed to load image Python extension')
@@ -32,6 +33,9 @@ from layers.dagnn_pyg import DAGNN
 from layers.constants import *
 import time
 from torch.utils.data import DataLoader
+from torch.profiler import profile, record_function, ProfilerActivity
+from torch.multiprocessing import freeze_support
+import psutil
 
 # Initialize colorama for cross-platform color support
 init()
@@ -150,20 +154,16 @@ if not os.path.exists(args.res_dir):
 # 1. igraph dataset:  dataset[0] = train set, dataset[1] = test set, each item is a pair (DAG of subgraphs for CktGNN, original igraph DAG)
 # 2. pygraph datasets: dataset[0] = train set, dataset[1] = test set, each item is a pygraph Data
 data_name = args.data_name
-if args.model.startswith('SVAE'):
-    data_type = 'tensor'
-    data_name += '_tensor'
-elif args.model.startswith('DAGNN'):
-    data_type = 'pygraph'
-    data_name += '_pygraph'
-else:
-    data_type = 'igraph'
+print(f"{BLUE}Loading data from: {args.data_dir}{RESET}")
 
 pkl_name = os.path.join(args.data_dir, data_name + '.pkl')
+print(f"{BLUE}Looking for dataset: {pkl_name}{RESET}")
+
 with open(pkl_name, 'rb') as f:
     all_datasets =  pickle.load(f)
 train_dataset = all_datasets[0]
 test_dataset = all_datasets[1]
+print(f"{GREEN}Loaded {len(train_dataset)} training samples and {len(test_dataset)} test samples{RESET}")
 
 if args.model.startswith('CktGNN'):
     train_data = [train_dataset[i][0] for i in range(len(train_dataset))]
@@ -273,6 +273,7 @@ else:
 
 # training function
 def train(epoch):
+    global epoch_history  # Add at top of file: epoch_history = []
     model.train()
     train_loss = 0
     recon_loss = 0
@@ -285,12 +286,14 @@ def train(epoch):
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
+        prefetch_factor=2,
+        persistent_workers=True,
         collate_fn=model._collate_fn
     )
     pbar = tqdm(train_loader)
     g_batch = []
     for batch in pbar:
-        if args.model.startswith('SVAE'):  # for SVAE, g is tensor
+        if args.model.startswith('SVAE'):
             batch = batch.to(device)
         optimizer.zero_grad()
         if args.all_gpus:  # does not support predictor yet
@@ -301,13 +304,21 @@ def train(epoch):
             mu, logvar = model.encode(batch)
             loss, recon, kld, type_l, pos_l, df_l= model.loss(mu, logvar, batch)
             pbar.set_description(
-                f"{BOLD}Epoch: {epoch}{RESET}, "
-                f"loss: {BLUE}{loss.item()/len(batch):.4f}{RESET}, "
-                f"recon: {GREEN}{recon.item()/len(batch):.4f}{RESET}, "
-                f"kld: {YELLOW}{kld.item()/len(batch):.4f}{RESET}, "
-                f"type loss: {RED}{-type_l.item()/len(batch):.4f}{RESET}, "
-                f"pos loss: {BLUE}{-pos_l.item()/len(batch):.4f}{RESET}, "
-                f"df_loss: {GREEN}{df_l.item()/len(batch):.4f}{RESET}"
+                "\033[1mEpoch: {}\033[0m, "
+                "\033[94mloss: {:.4f}\033[0m, "
+                "\033[92mrecon: {:.4f}\033[0m, "
+                "\033[93mkld: {:.4f}\033[0m, "
+                "\033[91mtype loss: {:.4f}\033[0m, "
+                "\033[94mpos loss: {:.4f}\033[0m, "
+                "\033[92mdf_loss: {:.4f}\033[0m".format(
+                    epoch,
+                    loss.item()/len(batch),
+                    recon.item()/len(batch),
+                    kld.item()/len(batch),
+                    -type_l.item()/len(batch),
+                    -pos_l.item()/len(batch),
+                    df_l.item()/len(batch)
+                )
             )
         loss.backward()
         
@@ -321,6 +332,36 @@ def train(epoch):
         optimizer.step()
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_data)))
+    scheduler.step(train_loss)
+    if epoch % args.save_interval == 0:
+        print("save current model...")
+        model_name = os.path.join(args.res_dir, 'model_checkpoint{}.pth'.format(epoch))
+        optimizer_name = os.path.join(args.res_dir, 'optimizer_checkpoint{}.pth'.format(epoch))
+        scheduler_name = os.path.join(args.res_dir, 'scheduler_checkpoint{}.pth'.format(epoch))
+        torch.save(model.state_dict(), model_name)
+        torch.save(optimizer.state_dict(), optimizer_name)
+        torch.save(scheduler.state_dict(), scheduler_name)
+    
+    # Store epoch results
+    epoch_results = {
+        'epoch': epoch,
+        'loss': train_loss/len(train_data),
+        'recon': recon_loss/len(train_data),
+        'kld': kld_loss/len(train_data),
+        'type': type_loss/len(train_data),
+        'pos': pos_loss/len(train_data)
+    }
+    epoch_history.append(epoch_results)
+    
+    # Print running summary
+    print(f"\n{BOLD}=== Training Summary ==={RESET}")
+    for e in epoch_history[-5:]:  # Show last 5 epochs
+        print(f"Epoch {e['epoch']}: "
+              f"{BLUE}loss: {e['loss']:.4f}{RESET}, "
+              f"{GREEN}recon: {e['recon']:.4f}{RESET}, "
+              f"{YELLOW}kld: {e['kld']:.4f}{RESET}")
+    print(f"{BOLD}{'='*30}{RESET}\n")
+    
     return train_loss, recon_loss, kld_loss, type_loss, pos_loss
 
 def test():
@@ -357,51 +398,62 @@ def test():
     print('Test average recon loss: {0}, recon accuracy: {1:.4f}'.format(Nll, acc))
     return Nll, acc
 
+def print_stats():
+    cpu_percent = psutil.cpu_percent(interval=1, percpu=True)
+    print(f"\nCPU per core: {cpu_percent}")
+    print(f"Memory used: {psutil.Process().memory_info().rss / 1024 / 1024:.1f} MB")
 
+def signal_handler(sig, frame):
+    print('\nGracefully exiting...')
+    sys.exit(0)
 
-'''Training begins here'''
-min_loss = math.inf  # >= python 3.5
-min_loss_epoch = None
-loss_name = os.path.join(args.res_dir, 'train_loss.txt')
-loss_plot_name = os.path.join(args.res_dir, 'train_loss_plot.pdf')
-test_results_name = os.path.join(args.res_dir, 'test_results.txt')
-if os.path.exists(loss_name) and not args.keep_old:
-    os.remove(loss_name)
+signal.signal(signal.SIGINT, signal_handler)
 
-start_epoch = args.continue_from if args.continue_from is not None else 0
-for epoch in range(start_epoch + 1, args.epochs + 1):
-    train_loss, recon_loss, kld_loss, type_loss, pos_loss= train(epoch)
-    pred_loss = 0.0
-    with open(loss_name, 'a') as loss_file:
-        loss_file.write("{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} \n".format(
-            train_loss/len(train_data), 
-            recon_loss/len(train_data), 
-            kld_loss/len(train_data), 
-            type_loss/len(train_data), 
-            pos_loss/len(train_data)
-            ))
-    scheduler.step(train_loss)
-    if epoch % args.save_interval == 0:
-        print("save current model...")
-        model_name = os.path.join(args.res_dir, 'model_checkpoint{}.pth'.format(epoch))
-        optimizer_name = os.path.join(args.res_dir, 'optimizer_checkpoint{}.pth'.format(epoch))
-        scheduler_name = os.path.join(args.res_dir, 'scheduler_checkpoint{}.pth'.format(epoch))
-        torch.save(model.state_dict(), model_name)
-        torch.save(optimizer.state_dict(), optimizer_name)
-        torch.save(scheduler.state_dict(), scheduler_name)
+if __name__ == '__main__':
+    freeze_support()
+    '''Training begins here'''
+    min_loss = math.inf  # >= python 3.5
+    min_loss_epoch = None
+    loss_name = os.path.join(args.res_dir, 'train_loss.txt')
+    loss_plot_name = os.path.join(args.res_dir, 'train_loss_plot.pdf')
+    test_results_name = os.path.join(args.res_dir, 'test_results.txt')
+    if os.path.exists(loss_name) and not args.keep_old:
+        os.remove(loss_name)
+
+    start_epoch = args.continue_from if args.continue_from is not None else 0
+    for epoch in range(start_epoch + 1, args.epochs + 1):
+        train_loss, recon_loss, kld_loss, type_loss, pos_loss= train(epoch)
+        pred_loss = 0.0
+        with open(loss_name, 'a') as loss_file:
+            loss_file.write("{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} \n".format(
+                train_loss/len(train_data), 
+                recon_loss/len(train_data), 
+                kld_loss/len(train_data), 
+                type_loss/len(train_data), 
+                pos_loss/len(train_data)
+                ))
+        scheduler.step(train_loss)
+        if epoch % args.save_interval == 0:
+            print("save current model...")
+            model_name = os.path.join(args.res_dir, 'model_checkpoint{}.pth'.format(epoch))
+            optimizer_name = os.path.join(args.res_dir, 'optimizer_checkpoint{}.pth'.format(epoch))
+            scheduler_name = os.path.join(args.res_dir, 'scheduler_checkpoint{}.pth'.format(epoch))
+            torch.save(model.state_dict(), model_name)
+            torch.save(optimizer.state_dict(), optimizer_name)
+            torch.save(scheduler.state_dict(), scheduler_name)
         
 
-'''Testing begins here'''
-Nll, acc = test()
-r_valid_dag, r_valid_ckt, r_novel = prior_validity(train_data, model, infer_batch_size=args.infer_batch_size, 
-    data_type=data_type,  subg=subg, device=device, scale_to_train_range=True)
+    '''Testing begins here'''
+    Nll, acc = test()
+    r_valid_dag, r_valid_ckt, r_novel = prior_validity(train_data, model, infer_batch_size=args.infer_batch_size, 
+        data_type=data_type,  subg=subg, device=device, scale_to_train_range=True)
 
-test_results_name = os.path.join(args.res_dir, 'decode_results.txt')
-with open(test_results_name, 'a') as result_file:
-    result_file.write(" recon acc: {:.4f} r_valid_dag: {:.4f} r_valid_ckt: {:.4f} r_novel: {:.4f}\n".format(acc, r_valid_dag, r_valid_ckt,
-            r_novel))
+    test_results_name = os.path.join(args.res_dir, 'decode_results.txt')
+    with open(test_results_name, 'a') as result_file:
+        result_file.write(" recon acc: {:.4f} r_valid_dag: {:.4f} r_valid_ckt: {:.4f} r_novel: {:.4f}\n".format(acc, r_valid_dag, r_valid_ckt,
+                r_novel))
 
-pdb.set_trace()
+    pdb.set_trace()
 
 
 

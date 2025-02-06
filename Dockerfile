@@ -1,5 +1,5 @@
 # Use Python 3.9 slim as base
-FROM python:3.9-slim
+FROM --platform=linux/arm64/v8 python:3.9-slim
 
 # Set working directory
 WORKDIR /app
@@ -7,7 +7,7 @@ WORKDIR /app
 # Create a volume for pip cache
 VOLUME /root/.cache/pip
 
-# Install system dependencies
+# Install system dependencies optimized for ARM
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     ninja-build \
     cmake \
+    libopenblas-dev \
+    libblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create cache directories for wheels and build
@@ -52,6 +54,12 @@ RUN mkdir -p OCB/CktBench101 results
 
 # Run validation on build to verify environment
 RUN python env_validation.py
+
+# Set environment variables for optimization
+ENV OPENBLAS_NUM_THREADS=4
+ENV VECLIB_MAXIMUM_THREADS=4
+ENV NUMEXPR_NUM_THREADS=4
+ENV MKL_NUM_THREADS=4
 
 # Default command to show help
 CMD ["python", "main.py", "--help"] 

@@ -1,11 +1,18 @@
 services:
   cktgnn:
     build: .
+    platform: linux/arm64
+    environment:
+      - OPENBLAS_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+      - OMP_NUM_THREADS=4
+      - VECLIB_MAXIMUM_THREADS=4  # Specific to Apple Silicon
+      - PYTORCH_ENABLE_MPS=1      # Enable Metal Performance Shaders
     deploy:
       resources:
         limits:
-          cpus: '4'    # Adjust based on your system
-          memory: 8G   # Adjust based on your system
+          cpus: '8'    # Use more cores if available on M2 Max
+          memory: 12G  # Increase if you have headroom
     volumes:
       - ./OCB:/app/OCB
       - ./results:/app/results
@@ -13,11 +20,12 @@ services:
     # Override the default command with the full training command
     command: >
       python main.py 
-      --epochs 300 
-      --save-appendix _cktgnn 
+      --epochs 5 
+      --save-appendix _test 
       --model CktGNN 
-      --hs 301
-      --num-workers 4
+      --hs 301        # Original benchmark size
+      --num-workers 2
+      --batch-size 128
 
 volumes:
   pip-cache: 
