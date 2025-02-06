@@ -13,6 +13,11 @@ conda-env/
 results/
 **/results/
 
+# Training artifacts
+training_metrics.pdf
+decode_results.txt
+train_loss.txt
+
 # Python cache files
 __pycache__/
 *.py[cod]
@@ -41,4 +46,27 @@ docker-compose.*.yml
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db 
+Thumbs.db
+
+# Docker-specific
+.docker/
+.env.docker
+
+# Build artifacts
+/wheels/
+.cache/
+pip-cache/
+
+# Development
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+log/
+/tmp/
+.pytest_cache/
+profile/ 

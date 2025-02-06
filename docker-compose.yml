@@ -11,8 +11,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8'    # Use more cores if available on M2 Max
-          memory: 12G  # Increase if you have headroom
+          cpus: '8'
+          memory: 16G
     volumes:
       - ./OCB:/app/OCB
       - ./results:/app/results
@@ -23,7 +23,7 @@ services:
       --epochs 5 
       --save-appendix _test 
       --model CktGNN 
-      --hs 301        # Original benchmark size
+      --hs 301
       --num-workers 2
       --batch-size 128
 
