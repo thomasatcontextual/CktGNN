@@ -1,12 +1,23 @@
 services:
   cktgnn:
     build: .
+    deploy:
+      resources:
+        limits:
+          cpus: '4'    # Adjust based on your system
+          memory: 8G   # Adjust based on your system
     volumes:
       - ./OCB:/app/OCB
       - ./results:/app/results
       - pip-cache:/root/.cache/pip:rw
     # Override the default command with the full training command
-    command: python main.py --epochs 300 --save-appendix _cktgnn --model CktGNN --hs 301 
+    command: >
+      python main.py 
+      --epochs 300 
+      --save-appendix _cktgnn 
+      --model CktGNN 
+      --hs 301
+      --num-workers 4
 
 volumes:
   pip-cache: 

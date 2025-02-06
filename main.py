@@ -31,6 +31,7 @@ from layers.models_ig import CktGNN, DVAE
 from layers.dagnn_pyg import DAGNN
 from layers.constants import *
 import time
+from torch.utils.data import DataLoader
 
 # Initialize colorama for cross-platform color support
 init()
@@ -92,6 +93,8 @@ parser.add_argument('--epochs', type=int, default=100000, metavar='N',
                     help='number of epochs to train')
 parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='batch size during training')
+parser.add_argument('--num-workers', type=int, default=4, metavar='N',
+                    help='number of worker processes for data loading')
 parser.add_argument('--cuda_id', type=int, default=0, metavar='N',
                     help='id of GPU')
 parser.add_argument('--infer-batch-size', type=int, default=128, metavar='N',
@@ -276,51 +279,51 @@ def train(epoch):
     kld_loss = 0
     type_loss = 0
     pos_loss = 0
-    shuffle(train_data)
-    pbar = tqdm(train_data)
+    # Create DataLoader with multiple workers
+    train_loader = DataLoader(
+        train_data,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        collate_fn=model._collate_fn
+    )
+    pbar = tqdm(train_loader)
     g_batch = []
-    for i, g in enumerate(pbar):
+    for batch in pbar:
         if args.model.startswith('SVAE'):  # for SVAE, g is tensor
-            g = g.to(device)
-        g_batch.append(g)
-        #y_batch.append(y)
-        if len(g_batch) == args.batch_size or i == len(train_data) - 1:
-            optimizer.zero_grad()
-            g_batch = model._collate_fn(g_batch)
-            if args.all_gpus:  # does not support predictor yet
-                loss = net(g_batch).sum()
-                pbar.set_description('Epoch: %d, loss: %0.4f' % (epoch, loss.item()/len(g_batch)))
-                recon, kld = 0, 0
-            else:
-                mu, logvar = model.encode(g_batch)
-                loss, recon, kld, type_l, pos_l, df_l= model.loss(mu, logvar, g_batch)
-                pbar.set_description(
-                    f"{BOLD}Epoch: {epoch}{RESET}, "
-                    f"loss: {BLUE}{loss.item()/len(g_batch):.4f}{RESET}, "
-                    f"recon: {GREEN}{recon.item()/len(g_batch):.4f}{RESET}, "
-                    f"kld: {YELLOW}{kld.item()/len(g_batch):.4f}{RESET}, "
-                    f"type loss: {RED}{-type_l.item()/len(g_batch):.4f}{RESET}, "
-                    f"pos loss: {BLUE}{-pos_l.item()/len(g_batch):.4f}{RESET}, "
-                    f"df_loss: {GREEN}{df_l.item()/len(g_batch):.4f}{RESET}"
-                )
-            loss.backward()
-            
-            train_loss += float(loss)
-            recon_loss += float(recon)
-            kld_loss += float(kld)
-            type_loss -= float(type_l)
-            pos_loss -= float(pos_l)
-            if args.predictor:
-                pred_loss += float(pred)
-            optimizer.step()
-            g_batch = []
-            y_batch = []
+            batch = batch.to(device)
+        optimizer.zero_grad()
+        if args.all_gpus:  # does not support predictor yet
+            loss = net(batch).sum()
+            pbar.set_description('Epoch: %d, loss: %0.4f' % (epoch, loss.item()/len(batch)))
+            recon, kld = 0, 0
+        else:
+            mu, logvar = model.encode(batch)
+            loss, recon, kld, type_l, pos_l, df_l= model.loss(mu, logvar, batch)
+            pbar.set_description(
+                f"{BOLD}Epoch: {epoch}{RESET}, "
+                f"loss: {BLUE}{loss.item()/len(batch):.4f}{RESET}, "
+                f"recon: {GREEN}{recon.item()/len(batch):.4f}{RESET}, "
+                f"kld: {YELLOW}{kld.item()/len(batch):.4f}{RESET}, "
+                f"type loss: {RED}{-type_l.item()/len(batch):.4f}{RESET}, "
+                f"pos loss: {BLUE}{-pos_l.item()/len(batch):.4f}{RESET}, "
+                f"df_loss: {GREEN}{df_l.item()/len(batch):.4f}{RESET}"
+            )
+        loss.backward()
+        
+        train_loss += float(loss)
+        recon_loss += float(recon)
+        kld_loss += float(kld)
+        type_loss -= float(type_l)
+        pos_loss -= float(pos_l)
+        if args.predictor:
+            pred_loss += float(pred)
+        optimizer.step()
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_data)))
     return train_loss, recon_loss, kld_loss, type_loss, pos_loss
 
 def test():
-    # test recon accuracy
     model.eval()
     encode_times = 10
     decode_times = 10
@@ -328,30 +331,25 @@ def test():
     pred_loss = 0
     n_perfect = 0
     print('Testing begins...')
-    pbar = tqdm(test_data)
-    g_batch = []
-    #y_batch = []
-    #time_start=time.time()
-    for i, g in enumerate(pbar):
+    test_loader = DataLoader(
+        test_data,
+        batch_size=args.infer_batch_size,
+        shuffle=False,  # No need to shuffle test data
+        num_workers=args.num_workers,
+        collate_fn=model._collate_fn
+    )
+    pbar = tqdm(test_loader)
+    for batch in pbar:
         if args.model.startswith('SVAE'):
-            g = g.to(device)
-        g_batch.append(g)
-        #y_batch.append(y)
-        if len(g_batch) == args.infer_batch_size or i == len(test_data) - 1:
-            g = model._collate_fn(g_batch)
-            mu, logvar = model.encode(g)
-            _, nll, _, _, _, _ = model.loss(mu, logvar, g)
-            pbar.set_description('nll: {:.4f}'.format(nll.item()/len(g_batch)))
-            Nll += nll.item()
-            #if args.model.startswith('SVAE'):  
-            #    g = model.construct_igraph(g[:, :, :model.nvt], g[:, :, model.nvt:], False)
-            for _ in range(encode_times):
-                z = model.reparameterize(mu, logvar)
-                for _ in range(decode_times):
-                    g_recon = model.decode(z)
-                    n_perfect += sum(is_same_DAG(g0, g1) for g0, g1 in zip(g, g_recon))
-            g_batch = []
-            
+            batch = batch.to(device)
+        mu, logvar = model.encode(batch)
+        _, nll, _, _, _, _ = model.loss(mu, logvar, batch)
+        Nll += nll.item()
+        for _ in range(encode_times):
+            z = model.reparameterize(mu, logvar)
+            for _ in range(decode_times):
+                g_recon = model.decode(z)
+                n_perfect += sum(is_same_DAG(g0, g1) for g0, g1 in zip(batch, g_recon))
     Nll /= len(test_data)
     pred_loss /= len(test_data)
     pred_rmse = math.sqrt(pred_loss)
